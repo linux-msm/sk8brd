@@ -33,7 +33,7 @@ struct Args {
     user: String,
 
     #[arg(long, default_value_t = false)]
-    power_cycle: bool
+    power_cycle: bool,
 }
 
 async fn handle_keypress(c: char, quit: &mut Arc<Mutex<bool>>) {
@@ -121,7 +121,9 @@ async fn main() {
 
             // And process it
             match msg.r#type.try_into() {
-                Ok(Sk8brdMsgs::MsgSelectBoard) => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, 0, &[0]),
+                Ok(Sk8brdMsgs::MsgSelectBoard) => {
+                    send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, 0, &[0])
+                }
                 Ok(Sk8brdMsgs::MsgConsole) => console_print(&buf, msg.len),
                 Ok(Sk8brdMsgs::MsgPowerOn) => (),
                 Ok(Sk8brdMsgs::MsgPowerOff) => (),
