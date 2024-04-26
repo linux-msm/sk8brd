@@ -2,6 +2,15 @@
 name = "sk8brd"
 version = "0.1.0"
 edition = "2021"
+authors = ["Konrad Dybcio <konradybcio@kernel.org>"]
+description = "Simple remote devboard control software"
+readme = "README.md"
+repository = "https://github.com/linux-msm/sk8brd"
+categories = ["command-line-utilities"]
+publish = false # TODO
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "sk8brd"
