@@ -1,7 +1,7 @@
 use clap::Parser;
 use colored::Colorize;
 use sk8brd::{
-    console_print, list_device, parse_recv_msg, select_brd, send_ack, send_image, send_msg,
+    console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_image, send_msg,
     Sk8brdMsgs, MSG_HDR_SIZE,
 };
 use ssh2::Session;
@@ -116,15 +116,16 @@ async fn main() {
             sess.set_blocking(true);
             let msg = parse_recv_msg(&hdr_buf);
 
-            // Now read the actual data
+            // Now read the actual data...
             chan.read_exact(&mut buf[..msg.len as usize]).unwrap();
 
-            // And process it
+            // ..and process it
             match msg.r#type.try_into() {
                 Ok(Sk8brdMsgs::MsgSelectBoard) => {
                     send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, 0, &[0])
                 }
                 Ok(Sk8brdMsgs::MsgConsole) => console_print(&buf, msg.len),
+                Ok(Sk8brdMsgs::MsgHardReset) => todo!("MsgHardReset is unused"),
                 Ok(Sk8brdMsgs::MsgPowerOn) => (),
                 Ok(Sk8brdMsgs::MsgPowerOff) => (),
                 Ok(Sk8brdMsgs::MsgFastbootPresent) => {
@@ -132,11 +133,19 @@ async fn main() {
                         send_image(&mut chan, &fastboot_image)
                     }
                 }
-                Ok(Sk8brdMsgs::MsgListDevices) => list_device(&buf, msg.len),
-                Ok(m) => writeln!(stdout(), "unknown message type {m:?}").unwrap(),
-                Err(e) => {
-                    writeln!(stdout(), "got error '{e}' while processing msg: {msg:?}").unwrap()
-                }
+                Ok(Sk8brdMsgs::MsgFastbootDownload) => (),
+                Ok(Sk8brdMsgs::MsgFastbootBoot) => todo!("MsgFastbootBoot is unused"),
+                Ok(Sk8brdMsgs::MsgStatusUpdate) => todo!("MsgStatusUpdate: implement me!"),
+                Ok(Sk8brdMsgs::MsgVbusOn) => todo!("Unexpected MsgVbusOn"),
+                Ok(Sk8brdMsgs::MsgVbusOff) => todo!("Unexpected MsgVbusOff"),
+                Ok(Sk8brdMsgs::MsgFastbootReboot) => todo!("MsgFastbootReboot is unused"),
+                Ok(Sk8brdMsgs::MsgSendBreak) => todo!("MsgSendBreak: implement me!"),
+                Ok(Sk8brdMsgs::MsgListDevices) => print_string_msg(&buf, msg.len),
+                Ok(Sk8brdMsgs::MsgBoardInfo) => print_string_msg(&buf, msg.len),
+                Ok(Sk8brdMsgs::MsgFastbootContinue) => (),
+
+                Ok(m) => todo!("{m:?} is unimplemented, skipping.."),
+                Err(e) => todo!("Received unknown/invalid message: `{e}`"),
             };
             sess.set_blocking(false);
         }
