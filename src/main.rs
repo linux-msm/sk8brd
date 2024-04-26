@@ -125,7 +125,11 @@ async fn main() {
                 Ok(Sk8brdMsgs::MsgConsole) => console_print(&buf, msg.len),
                 Ok(Sk8brdMsgs::MsgPowerOn) => (),
                 Ok(Sk8brdMsgs::MsgPowerOff) => (),
-                Ok(Sk8brdMsgs::MsgFastbootPresent) => send_image(&mut chan, &fastboot_image),
+                Ok(Sk8brdMsgs::MsgFastbootPresent) => {
+                    if msg.len > 0 && buf[0] != 0 {
+                        send_image(&mut chan, &fastboot_image)
+                    }
+                }
                 Ok(Sk8brdMsgs::MsgListDevices) => list_device(&buf, msg.len),
                 Ok(m) => println!("uknown message type {m:?}"),
                 Err(e) => println!("got error '{e}' while processing msg: {msg:?}"),
