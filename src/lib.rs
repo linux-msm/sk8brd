@@ -5,6 +5,7 @@ use std::mem::size_of;
 
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Sk8brdMsgs {
     MsgSelectBoard = 1,
     MsgConsole,
@@ -139,7 +140,7 @@ pub fn send_vbus_ctrl(write_sink: &mut impl Write, en: bool) {
 }
 
 #[allow(clippy::explicit_write)]
-pub fn list_device(buf: &[u8], len: u16) {
+pub fn print_string_msg(buf: &[u8], len: u16) {
     if len == 0 {
         return;
     }
