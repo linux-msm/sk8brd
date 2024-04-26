@@ -31,6 +31,9 @@ struct Args {
 
     #[arg(short, default_value_t = String::from("cdba"))]
     user: String,
+
+    #[arg(long, default_value_t = false)]
+    power_cycle: bool
 }
 
 async fn handle_keypress(c: char, quit: &mut Arc<Mutex<bool>>) {
@@ -80,6 +83,10 @@ async fn main() {
 
     send_msg(&mut chan, Sk8brdMsgs::MsgListDevices, 0, &[0]);
     select_brd(&mut chan, &args.board);
+    if args.power_cycle {
+        println!("Powering off the board first");
+        send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff);
+    }
 
     crossterm::terminal::enable_raw_mode().unwrap();
 
@@ -117,6 +124,7 @@ async fn main() {
                 Sk8brdMsgs::MsgSelectBoard => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, 0, &[0]),
                 Sk8brdMsgs::MsgConsole => console_print(&buf, msg.len),
                 Sk8brdMsgs::MsgPowerOn => (),
+                Sk8brdMsgs::MsgPowerOff => (),
                 Sk8brdMsgs::MsgFastbootPresent => send_image(&mut chan, &fastboot_image),
                 Sk8brdMsgs::MsgListDevices => list_device(&buf, msg.len),
                 _ => println!("unknown msg: {:?}", msg),
