@@ -133,8 +133,10 @@ async fn main() {
                     }
                 }
                 Ok(Sk8brdMsgs::MsgListDevices) => list_device(&buf, msg.len),
-                Ok(m) => println!("uknown message type {m:?}"),
-                Err(e) => println!("got error '{e}' while processing msg: {msg:?}"),
+                Ok(m) => writeln!(stdout(), "unknown message type {m:?}").unwrap(),
+                Err(e) => {
+                    writeln!(stdout(), "got error '{e}' while processing msg: {msg:?}").unwrap()
+                }
             };
             sess.set_blocking(false);
         }
