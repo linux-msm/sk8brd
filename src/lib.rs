@@ -91,7 +91,7 @@ pub fn send_image(write_sink: &mut impl Write, buf: &Vec<u8>) {
     let mut last_percent_done: usize = 0;
     let mut bytes_sent = 0;
 
-    while bytes_sent < buf.len() - 1 {
+    while bytes_sent < buf.len() {
         let bytes_left = min(2048, buf.len() - bytes_sent);
         let percent_done = 100 * bytes_sent / buf.len();
 
@@ -106,7 +106,7 @@ pub fn send_image(write_sink: &mut impl Write, buf: &Vec<u8>) {
             &buf[bytes_sent..],
         );
 
-        bytes_sent += bytes_left - 1;
+        bytes_sent += bytes_left;
         last_percent_done = percent_done;
     }
 
