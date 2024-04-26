@@ -127,6 +127,17 @@ pub fn select_brd(write_sink: &mut impl Write, name: &str) {
     )
 }
 
+pub fn send_vbus_ctrl(write_sink: &mut impl Write, en: bool) {
+    send_ack(
+        write_sink,
+        if en {
+            Sk8brdMsgs::MsgVbusOn
+        } else {
+            Sk8brdMsgs::MsgVbusOff
+        },
+    )
+}
+
 #[allow(clippy::explicit_write)]
 pub fn list_device(buf: &[u8], len: u16) {
     if len == 0 {
