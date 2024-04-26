@@ -87,7 +87,7 @@ pub fn console_print(buf: &[u8], len: u16) {
 }
 
 #[allow(clippy::explicit_write)]
-pub fn send_image(write_sink: &mut impl Write, buf: &Vec<u8>) {
+pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) {
     let mut last_percent_done: usize = 0;
     let mut bytes_sent = 0;
 
