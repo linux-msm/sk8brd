@@ -2,7 +2,7 @@ use clap::Parser;
 use colored::Colorize;
 use sk8brd::{
     console_print, list_device, parse_recv_msg, select_brd, send_ack, send_image, send_msg,
-    u8_to_msg, Sk8brdMsgs, MSG_HDR_SIZE,
+    Sk8brdMsgs, MSG_HDR_SIZE,
 };
 use ssh2::Session;
 use std::fs;
@@ -120,14 +120,15 @@ async fn main() {
             chan.read_exact(&mut buf[..msg.len as usize]).unwrap();
 
             // And process it
-            match u8_to_msg(msg.r#type) {
-                Sk8brdMsgs::MsgSelectBoard => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, 0, &[0]),
-                Sk8brdMsgs::MsgConsole => console_print(&buf, msg.len),
-                Sk8brdMsgs::MsgPowerOn => (),
-                Sk8brdMsgs::MsgPowerOff => (),
-                Sk8brdMsgs::MsgFastbootPresent => send_image(&mut chan, &fastboot_image),
-                Sk8brdMsgs::MsgListDevices => list_device(&buf, msg.len),
-                _ => println!("unknown msg: {:?}", msg),
+            match msg.r#type.try_into() {
+                Ok(Sk8brdMsgs::MsgSelectBoard) => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, 0, &[0]),
+                Ok(Sk8brdMsgs::MsgConsole) => console_print(&buf, msg.len),
+                Ok(Sk8brdMsgs::MsgPowerOn) => (),
+                Ok(Sk8brdMsgs::MsgPowerOff) => (),
+                Ok(Sk8brdMsgs::MsgFastbootPresent) => send_image(&mut chan, &fastboot_image),
+                Ok(Sk8brdMsgs::MsgListDevices) => list_device(&buf, msg.len),
+                Ok(m) => println!("uknown message type {m:?}"),
+                Err(e) => println!("got error '{e}' while processing msg: {msg:?}"),
             };
             sess.set_blocking(false);
         }
