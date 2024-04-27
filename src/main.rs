@@ -58,6 +58,8 @@ async fn main() {
 
     let fastboot_image = fs::read(args.image_path).expect("boot image not found");
 
+    println!("sk8brd {}", env!("CARGO_PKG_VERSION"));
+
     // Connect to the local SSH server
     let tcp = match TcpStream::connect(format!("{}:{}", args.farm, args.port)) {
         Ok(t) => t,
