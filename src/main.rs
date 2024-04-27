@@ -81,7 +81,7 @@ async fn main() {
 
     sess.set_blocking(false);
 
-    send_msg(&mut chan, Sk8brdMsgs::MsgListDevices, 0, &[0]);
+    send_ack(&mut chan, Sk8brdMsgs::MsgListDevices);
     select_brd(&mut chan, &args.board);
     if args.power_cycle {
         println!("Powering off the board first");
