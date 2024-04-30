@@ -64,7 +64,7 @@ pub fn send_msg(write_sink: &mut impl Write, r#type: Sk8brdMsgs, buf: &[u8]) {
     let hdr = [r#type as u8, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8];
 
     write_sink.write_all(&hdr).unwrap();
-    let _ = write_sink.write(buf).unwrap();
+    write_sink.write_all(buf).unwrap();
 }
 
 pub fn send_ack(write_sink: &mut impl Write, r#type: Sk8brdMsgs) {
