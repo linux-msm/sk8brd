@@ -59,15 +59,16 @@ pub struct Sk8brdMsg {
 }
 pub const MSG_HDR_SIZE: usize = size_of::<Sk8brdMsg>();
 
-pub fn send_msg(write_sink: &mut impl Write, r#type: Sk8brdMsgs, buf: &[u8]) {
+pub fn send_msg(write_sink: &mut impl Write, r#type: Sk8brdMsgs, buf: &[u8]) -> anyhow::Result<()> {
     let len = buf.len();
     let hdr = [r#type as u8, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8];
 
-    write_sink.write_all(&hdr).unwrap();
-    write_sink.write_all(buf).unwrap();
+    write_sink.write_all(&hdr)?;
+    write_sink.write_all(buf)?;
+    Ok(())
 }
 
-pub fn send_ack(write_sink: &mut impl Write, r#type: Sk8brdMsgs) {
+pub fn send_ack(write_sink: &mut impl Write, r#type: Sk8brdMsgs) -> anyhow::Result<()> {
     send_msg(write_sink, r#type, &[])
 }
 
@@ -88,7 +89,7 @@ pub fn console_print(buf: &[u8]) {
 }
 
 #[allow(clippy::explicit_write)]
-pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) {
+pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) -> anyhow::Result<()> {
     let mut last_percent_done: usize = 0;
     let mut bytes_sent = 0;
 
@@ -99,7 +100,7 @@ pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) {
             write!(stdout(), " Sending image: {}%\r", percent_done).unwrap();
         }
 
-        send_msg(write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk);
+        send_msg(write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk)?;
 
         bytes_sent += chunk.len();
         last_percent_done = percent_done;
@@ -108,11 +109,11 @@ pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) {
     send_ack(write_sink, Sk8brdMsgs::MsgFastbootDownload)
 }
 
-pub fn select_brd(write_sink: &mut impl Write, name: &str) {
+pub fn select_brd(write_sink: &mut impl Write, name: &str) -> anyhow::Result<()> {
     send_msg(write_sink, Sk8brdMsgs::MsgSelectBoard, name.as_bytes())
 }
 
-pub fn send_vbus_ctrl(write_sink: &mut impl Write, en: bool) {
+pub fn send_vbus_ctrl(write_sink: &mut impl Write, en: bool) -> anyhow::Result<()> {
     send_ack(
         write_sink,
         if en {

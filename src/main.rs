@@ -56,7 +56,7 @@ macro_rules! todo {
 // For raw mode TTY
 #[allow(clippy::explicit_write)]
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let mut hdr_buf = [0u8; MSG_HDR_SIZE];
     let mut buf = [0u8; SSH_BUFFER_SIZE];
     let mut key_buf = [0u8; 1];
@@ -90,11 +90,11 @@ async fn main() {
 
     sess.set_blocking(false);
 
-    send_ack(&mut chan, Sk8brdMsgs::MsgListDevices);
-    select_brd(&mut chan, &args.board);
+    send_ack(&mut chan, Sk8brdMsgs::MsgListDevices)?;
+    select_brd(&mut chan, &args.board)?;
     if args.power_cycle {
         println!("Powering off the board first");
-        send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff);
+        send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff)?;
     }
 
     crossterm::terminal::enable_raw_mode().unwrap();
@@ -131,14 +131,14 @@ async fn main() {
 
             // ..and process it
             match msg.r#type.try_into() {
-                Ok(Sk8brdMsgs::MsgSelectBoard) => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, &[]),
+                Ok(Sk8brdMsgs::MsgSelectBoard) => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, &[])?,
                 Ok(Sk8brdMsgs::MsgConsole) => console_print(&msgbuf),
                 Ok(Sk8brdMsgs::MsgHardReset) => todo!("MsgHardReset is unused"),
                 Ok(Sk8brdMsgs::MsgPowerOn) => (),
                 Ok(Sk8brdMsgs::MsgPowerOff) => (),
                 Ok(Sk8brdMsgs::MsgFastbootPresent) => {
                     if !msgbuf.is_empty() && msgbuf[0] != 0 {
-                        send_image(&mut chan, &fastboot_image)
+                        send_image(&mut chan, &fastboot_image)?
                     }
                 }
                 Ok(Sk8brdMsgs::MsgFastbootDownload) => (),
@@ -166,7 +166,7 @@ async fn main() {
     crossterm::terminal::disable_raw_mode().unwrap();
 
     // Power off the board on goodbye
-    send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff);
+    send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff)?;
 
     sess.disconnect(
         Option::Some(ssh2::DisconnectCode::ConnectionLost),
@@ -176,4 +176,5 @@ async fn main() {
     .unwrap();
 
     println!("Goodbye");
+    Ok(())
 }
