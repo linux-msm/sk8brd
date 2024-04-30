@@ -68,25 +68,16 @@ async fn main() -> anyhow::Result<()> {
     println!("sk8brd {}", env!("CARGO_PKG_VERSION"));
 
     // Connect to the local SSH server
-    let tcp = match TcpStream::connect(format!("{}:{}", args.farm, args.port)) {
-        Ok(t) => t,
-        Err(e) => panic!("Server connection failed: {e}"),
-    };
-    let mut sess = Session::new().unwrap();
+    let tcp = TcpStream::connect(format!("{}:{}", args.farm, args.port))?;
+    let mut sess = Session::new()?;
     sess.set_tcp_stream(tcp);
-    match sess.handshake() {
-        Ok(s) => s,
-        Err(e) => panic!("SSH handshake failed: {e}"),
-    };
+    sess.handshake()?;
 
     // Try to authenticate with the first identity in the agent.
-    match sess.userauth_agent("cdba") {
-        Ok(s) => s,
-        Err(e) => panic!("SSH agent authentication failed: {e}"),
-    };
+    sess.userauth_agent("cdba")?;
 
-    let mut chan = sess.channel_session().unwrap();
-    chan.exec(CDBA_SERVER_BIN_NAME).unwrap();
+    let mut chan = sess.channel_session()?;
+    chan.exec(CDBA_SERVER_BIN_NAME)?;
 
     sess.set_blocking(false);
 
@@ -97,26 +88,27 @@ async fn main() -> anyhow::Result<()> {
         send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff)?;
     }
 
-    crossterm::terminal::enable_raw_mode().unwrap();
+    crossterm::terminal::enable_raw_mode()?;
 
     let mut quit2 = Arc::clone(&quit);
     let stdin_handler = tokio::spawn(async move {
         let mut stdin = os_pipe::dup_stdin().expect("Couldn't dup stdin");
 
         while !*quit2.lock().await {
-            if stdin.read(&mut key_buf).unwrap() > 0 {
-                handle_keypress(key_buf[0] as char, &mut quit2).await;
+            if let Ok(len) = stdin.read(&mut key_buf) {
+                for c in key_buf[0..len].iter() {
+                    handle_keypress(*c as char, &mut quit2).await;
+                }
             };
         }
     });
 
     while !*quit.lock().await {
         // Stream of "blue text" - status updates from the server
-        let bytes_read = chan.stderr().read(&mut buf).unwrap_or(0);
-        if bytes_read > 0 {
+        if let Ok(bytes_read) = chan.stderr().read(&mut buf) {
             let s = String::from_utf8_lossy(&buf[..bytes_read]);
-            writeln!(stdout(), "{}\r", s.blue()).unwrap();
-            stdout().flush().unwrap();
+            writeln!(stdout(), "{}\r", s.blue())?;
+            stdout().flush()?;
         }
 
         // Msg handler
@@ -127,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
             let mut msgbuf = vec![0u8; msg.len as usize];
 
             // Now read the actual data...
-            chan.read_exact(&mut msgbuf).unwrap();
+            chan.read_exact(&mut msgbuf)?;
 
             // ..and process it
             match msg.r#type.try_into() {
@@ -163,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
     stdin_handler.abort();
 
     // Pick up the trash
-    crossterm::terminal::disable_raw_mode().unwrap();
+    crossterm::terminal::disable_raw_mode()?;
 
     // Power off the board on goodbye
     send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff)?;
@@ -172,8 +164,7 @@ async fn main() -> anyhow::Result<()> {
         Option::Some(ssh2::DisconnectCode::ConnectionLost),
         "bye",
         Option::Some("C"),
-    )
-    .unwrap();
+    )?;
 
     println!("Goodbye");
     Ok(())
