@@ -124,17 +124,12 @@ pub fn send_vbus_ctrl(write_sink: &mut impl Write, en: bool) {
 }
 
 #[allow(clippy::explicit_write)]
-pub fn print_string_msg(buf: &[u8], len: u16) {
-    if len == 0 {
+pub fn print_string_msg(buf: &[u8]) {
+    if buf.is_empty() {
         return;
     }
 
-    writeln!(
-        stdout(),
-        "{}\r",
-        String::from_utf8_lossy(&buf[..len as usize])
-    )
-    .unwrap();
+    writeln!(stdout(), "{}\r", String::from_utf8_lossy(buf)).unwrap();
     stdout().flush().unwrap();
 }
 
