@@ -96,7 +96,7 @@ async fn main() {
     let stdin_handler = tokio::spawn(async move {
         let mut stdin = os_pipe::dup_stdin().expect("Couldn't dup stdin");
 
-        loop {
+        while !*quit2.lock().await {
             if stdin.read(&mut key_buf).unwrap() > 0 {
                 handle_keypress(key_buf[0] as char, &mut quit2).await;
             };
