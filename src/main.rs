@@ -147,8 +147,8 @@ async fn main() {
                 Ok(Sk8brdMsgs::MsgVbusOff) => todo!("Unexpected MsgVbusOff"),
                 Ok(Sk8brdMsgs::MsgFastbootReboot) => todo!("MsgFastbootReboot is unused"),
                 Ok(Sk8brdMsgs::MsgSendBreak) => todo!("MsgSendBreak: implement me!"),
-                Ok(Sk8brdMsgs::MsgListDevices) => print_string_msg(&buf, msg.len),
-                Ok(Sk8brdMsgs::MsgBoardInfo) => print_string_msg(&buf, msg.len),
+                Ok(Sk8brdMsgs::MsgListDevices) => print_string_msg(&buf[..msg.len as usize]),
+                Ok(Sk8brdMsgs::MsgBoardInfo) => print_string_msg(&buf[..msg.len as usize]),
                 Ok(Sk8brdMsgs::MsgFastbootContinue) => (),
 
                 Ok(m) => todo!("{m:?} is unimplemented, skipping.."),
