@@ -124,19 +124,20 @@ async fn main() {
         if chan.read_exact(&mut hdr_buf).is_ok() {
             sess.set_blocking(true);
             let msg = parse_recv_msg(&hdr_buf);
+            let mut msgbuf = vec![0u8; msg.len as usize];
 
             // Now read the actual data...
-            chan.read_exact(&mut buf[..msg.len as usize]).unwrap();
+            chan.read_exact(&mut msgbuf).unwrap();
 
             // ..and process it
             match msg.r#type.try_into() {
                 Ok(Sk8brdMsgs::MsgSelectBoard) => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, &[]),
-                Ok(Sk8brdMsgs::MsgConsole) => console_print(&buf[..msg.len as usize]),
+                Ok(Sk8brdMsgs::MsgConsole) => console_print(&msgbuf),
                 Ok(Sk8brdMsgs::MsgHardReset) => todo!("MsgHardReset is unused"),
                 Ok(Sk8brdMsgs::MsgPowerOn) => (),
                 Ok(Sk8brdMsgs::MsgPowerOff) => (),
                 Ok(Sk8brdMsgs::MsgFastbootPresent) => {
-                    if msg.len > 0 && buf[0] != 0 {
+                    if !msgbuf.is_empty() && msgbuf[0] != 0 {
                         send_image(&mut chan, &fastboot_image)
                     }
                 }
@@ -147,8 +148,8 @@ async fn main() {
                 Ok(Sk8brdMsgs::MsgVbusOff) => todo!("Unexpected MsgVbusOff"),
                 Ok(Sk8brdMsgs::MsgFastbootReboot) => todo!("MsgFastbootReboot is unused"),
                 Ok(Sk8brdMsgs::MsgSendBreak) => todo!("MsgSendBreak: implement me!"),
-                Ok(Sk8brdMsgs::MsgListDevices) => print_string_msg(&buf[..msg.len as usize]),
-                Ok(Sk8brdMsgs::MsgBoardInfo) => print_string_msg(&buf[..msg.len as usize]),
+                Ok(Sk8brdMsgs::MsgListDevices) => print_string_msg(&msgbuf),
+                Ok(Sk8brdMsgs::MsgBoardInfo) => print_string_msg(&msgbuf),
                 Ok(Sk8brdMsgs::MsgFastbootContinue) => (),
 
                 Ok(m) => todo!("{m:?} is unimplemented, skipping.."),
