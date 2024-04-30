@@ -130,9 +130,7 @@ async fn main() {
 
             // ..and process it
             match msg.r#type.try_into() {
-                Ok(Sk8brdMsgs::MsgSelectBoard) => {
-                    send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, 0, &[0])
-                }
+                Ok(Sk8brdMsgs::MsgSelectBoard) => send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, &[]),
                 Ok(Sk8brdMsgs::MsgConsole) => console_print(&buf, msg.len),
                 Ok(Sk8brdMsgs::MsgHardReset) => todo!("MsgHardReset is unused"),
                 Ok(Sk8brdMsgs::MsgPowerOn) => (),
