@@ -60,14 +60,10 @@ pub struct Sk8brdMsg {
 pub const MSG_HDR_SIZE: usize = size_of::<Sk8brdMsg>();
 
 pub fn send_msg(write_sink: &mut impl Write, r#type: Sk8brdMsgs, buf: &[u8]) {
-    let msg: Sk8brdMsg = Sk8brdMsg {
-        r#type: r#type as u8,
-        len: buf.len() as u16,
-    };
+    let len = buf.len();
+    let hdr = [r#type as u8, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8];
 
-    write_sink
-        .write_all(&bincode::serialize(&msg).unwrap())
-        .unwrap();
+    write_sink.write_all(&hdr).unwrap();
     let _ = write_sink.write(buf).unwrap();
 }
 
