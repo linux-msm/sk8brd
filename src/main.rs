@@ -46,6 +46,13 @@ async fn handle_keypress(c: char, quit: &mut Arc<Mutex<bool>>) {
     }
 }
 
+macro_rules! todo {
+    ($s: expr) => {{
+        let val = format!($s);
+        writeln!(stdout(), "{val}\r").unwrap();
+    }};
+}
+
 // For raw mode TTY
 #[allow(clippy::explicit_write)]
 #[tokio::main]
