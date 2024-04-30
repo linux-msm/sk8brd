@@ -82,8 +82,8 @@ pub fn parse_recv_msg(buf: &[u8]) -> Sk8brdMsg {
     msg
 }
 
-pub fn console_print(buf: &[u8], len: u16) {
-    print!("{}", String::from_utf8_lossy(&buf[..len as usize]));
+pub fn console_print(buf: &[u8]) {
+    print!("{}", String::from_utf8_lossy(buf));
     stdout().flush().unwrap();
 }
 
