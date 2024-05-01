@@ -96,7 +96,7 @@ pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) {
         let percent_done = 100 * bytes_sent / buf.len();
 
         if percent_done != last_percent_done {
-            writeln!(stdout(), " Sending image: {}%\r", percent_done).unwrap();
+            write!(stdout(), " Sending image: {}%\r", percent_done).unwrap();
         }
 
         send_msg(write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk);
