@@ -6,11 +6,13 @@ on:
 
 jobs:
   build:
-    name: Build Rust code
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - run: cargo build --verbose
+      - uses: actions/checkout@v4
+      - run: cargo build --verbose
 
   rust:
     name: Lint Rust code
