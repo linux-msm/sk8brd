@@ -1,3 +1,4 @@
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::io::{stdout, Write};
 use std::mem::size_of;
@@ -109,13 +110,20 @@ pub async fn send_image(write_sink: &mut Arc<Mutex<impl Write>>, buf: &[u8]) -> 
         let percent_done = 100 * bytes_sent / buf.len();
 
         if percent_done != last_percent_done {
-            write!(stdout(), " Sending image: {}%\r", percent_done).unwrap();
+            let s = format!(" Sending image: {}%\r", percent_done);
+            write!(stdout(), "{}", s.green()).unwrap();
+            stdout().flush()?;
         }
 
         send_msg(write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk).await?;
 
         bytes_sent += chunk.len();
         last_percent_done = percent_done;
+
+        if bytes_sent == buf.len() {
+            write!(stdout(), "\r{}\r", " ".repeat(80))?;
+            write!(stdout(), "{}\r\n", String::from("Image sent!").green())?;
+        }
     }
 
     send_ack(write_sink, Sk8brdMsgs::MsgFastbootDownload).await
