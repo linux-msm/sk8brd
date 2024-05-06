@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use clap::Parser;
 use colored::Colorize;
 use sk8brd::{
@@ -13,6 +14,7 @@ use tokio::sync::Mutex;
 
 const SSH_BUFFER_SIZE: usize = 2048;
 const CDBA_SERVER_BIN_NAME: &str = "cdba-server";
+const USERNAME: &str = "cdba";
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -68,16 +70,19 @@ async fn main() -> anyhow::Result<()> {
     println!("sk8brd {}", env!("CARGO_PKG_VERSION"));
 
     // Connect to the local SSH server
-    let tcp = TcpStream::connect(format!("{}:{}", args.farm, args.port))?;
+    let tcp = TcpStream::connect(format!("{}:{}", args.farm, args.port))
+        .with_context(|| format!("Couldn't connect to {}:{}", args.farm, args.port))?;
     let mut sess = Session::new()?;
     sess.set_tcp_stream(tcp);
     sess.handshake()?;
 
     // Try to authenticate with the first identity in the agent.
-    sess.userauth_agent("cdba")?;
+    sess.userauth_agent(USERNAME)
+        .with_context(|| format!("Couldn't authenticate as {USERNAME}"))?;
 
     let mut chan = sess.channel_session()?;
-    chan.exec(CDBA_SERVER_BIN_NAME)?;
+    chan.exec(CDBA_SERVER_BIN_NAME)
+        .with_context(|| format!("Couldn't execute {CDBA_SERVER_BIN_NAME} on remote host"))?;
 
     sess.set_blocking(false);
 
@@ -164,7 +169,8 @@ async fn main() -> anyhow::Result<()> {
         Option::Some(ssh2::DisconnectCode::ConnectionLost),
         "bye",
         Option::Some("C"),
-    )?;
+    )
+    .context("Couldn't disconnect cleanly")?;
 
     println!("Goodbye");
     Ok(())
