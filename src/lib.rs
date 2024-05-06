@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::io::{stdout, Write};
 use std::mem::size_of;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
@@ -59,7 +61,14 @@ pub struct Sk8brdMsg {
 }
 pub const MSG_HDR_SIZE: usize = size_of::<Sk8brdMsg>();
 
-pub fn send_msg(write_sink: &mut impl Write, r#type: Sk8brdMsgs, buf: &[u8]) -> anyhow::Result<()> {
+pub async fn send_msg(
+    write_sink: &mut Arc<Mutex<impl Write>>,
+    r#type: Sk8brdMsgs,
+    buf: &[u8],
+) -> anyhow::Result<()> {
+    // Make sure we're not trying to send two messages at once
+    let mut write_sink = write_sink.lock().await;
+
     let len = buf.len();
     let hdr = [r#type as u8, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8];
 
@@ -68,8 +77,11 @@ pub fn send_msg(write_sink: &mut impl Write, r#type: Sk8brdMsgs, buf: &[u8]) -> 
     Ok(())
 }
 
-pub fn send_ack(write_sink: &mut impl Write, r#type: Sk8brdMsgs) -> anyhow::Result<()> {
-    send_msg(write_sink, r#type, &[])
+pub async fn send_ack(
+    write_sink: &mut Arc<Mutex<impl Write>>,
+    r#type: Sk8brdMsgs,
+) -> anyhow::Result<()> {
+    send_msg(write_sink, r#type, &[]).await
 }
 
 pub fn parse_recv_msg(buf: &[u8]) -> Sk8brdMsg {
@@ -83,13 +95,13 @@ pub fn parse_recv_msg(buf: &[u8]) -> Sk8brdMsg {
     msg
 }
 
-pub fn console_print(buf: &[u8]) {
+pub async fn console_print(buf: &[u8]) {
     print!("{}", String::from_utf8_lossy(buf));
     stdout().flush().unwrap();
 }
 
 #[allow(clippy::explicit_write)]
-pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) -> anyhow::Result<()> {
+pub async fn send_image(write_sink: &mut Arc<Mutex<impl Write>>, buf: &[u8]) -> anyhow::Result<()> {
     let mut last_percent_done: usize = 0;
     let mut bytes_sent = 0;
 
@@ -100,20 +112,23 @@ pub fn send_image(write_sink: &mut impl Write, buf: &[u8]) -> anyhow::Result<()>
             write!(stdout(), " Sending image: {}%\r", percent_done).unwrap();
         }
 
-        send_msg(write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk)?;
+        send_msg(write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk).await?;
 
         bytes_sent += chunk.len();
         last_percent_done = percent_done;
     }
 
-    send_ack(write_sink, Sk8brdMsgs::MsgFastbootDownload)
+    send_ack(write_sink, Sk8brdMsgs::MsgFastbootDownload).await
 }
 
-pub fn select_brd(write_sink: &mut impl Write, name: &str) -> anyhow::Result<()> {
-    send_msg(write_sink, Sk8brdMsgs::MsgSelectBoard, name.as_bytes())
+pub async fn select_brd(write_sink: &mut Arc<Mutex<impl Write>>, name: &str) -> anyhow::Result<()> {
+    send_msg(write_sink, Sk8brdMsgs::MsgSelectBoard, name.as_bytes()).await
 }
 
-pub fn send_vbus_ctrl(write_sink: &mut impl Write, en: bool) -> anyhow::Result<()> {
+pub async fn send_vbus_ctrl(
+    write_sink: &mut Arc<Mutex<impl Write>>,
+    en: bool,
+) -> anyhow::Result<()> {
     send_ack(
         write_sink,
         if en {
@@ -122,6 +137,7 @@ pub fn send_vbus_ctrl(write_sink: &mut impl Write, en: bool) -> anyhow::Result<(
             Sk8brdMsgs::MsgVbusOff
         },
     )
+    .await
 }
 
 #[allow(clippy::explicit_write)]
