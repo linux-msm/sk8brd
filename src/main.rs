@@ -164,7 +164,7 @@ async fn main() -> anyhow::Result<()> {
                 Ok(Sk8brdMsgs::MsgPowerOff) => (),
                 Ok(Sk8brdMsgs::MsgFastbootPresent) => {
                     if !msgbuf.is_empty() && msgbuf[0] != 0 {
-                        send_image(&mut chan, &fastboot_image).await?
+                        send_image(&mut chan, &fastboot_image, &quit).await?
                     }
                 }
                 Ok(Sk8brdMsgs::MsgFastbootDownload) => (),
@@ -201,6 +201,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .context("Couldn't disconnect cleanly")?;
 
-    println!("Goodbye");
+    println!("\nGoodbye");
     Ok(())
 }

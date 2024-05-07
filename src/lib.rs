@@ -102,15 +102,23 @@ pub async fn console_print(buf: &[u8]) {
 }
 
 #[allow(clippy::explicit_write)]
-pub async fn send_image(write_sink: &mut Arc<Mutex<impl Write>>, buf: &[u8]) -> anyhow::Result<()> {
+pub async fn send_image(
+    write_sink: &mut Arc<Mutex<impl Write>>,
+    buf: &[u8],
+    quit: &Arc<Mutex<bool>>,
+) -> anyhow::Result<()> {
     let mut last_percent_done: usize = 0;
     let mut bytes_sent = 0;
 
     for chunk in buf.chunks(2048) {
         let percent_done = 100 * bytes_sent / buf.len();
 
+        if *quit.lock().await {
+            return Ok(());
+        }
+
         if percent_done != last_percent_done {
-            let s = format!(" Sending image: {}%\r", percent_done);
+            let s = format!("Sending image: {}%\r", percent_done);
             print!("{}", s.green());
             stdout().flush()?;
         }
