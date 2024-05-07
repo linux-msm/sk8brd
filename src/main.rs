@@ -2,8 +2,8 @@ use anyhow::Context as _;
 use clap::Parser;
 use colored::Colorize;
 use sk8brd::{
-    console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_image, send_msg,
-    Sk8brdMsgs, MSG_HDR_SIZE,
+    console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_break,
+    send_console, send_image, send_msg, Sk8brdMsgs, MSG_HDR_SIZE,
 };
 use ssh2::Session;
 use std::fs;
@@ -47,16 +47,26 @@ async fn handle_keypress(
     if *special {
         *special = false;
         match c {
+            'a' => send_console(message_sink, &[1u8]).await.unwrap(),
+            'B' => send_break(message_sink).await.unwrap(),
+            'P' => send_ack(message_sink, Sk8brdMsgs::MsgPowerOn)
+                .await
+                .unwrap(),
+            'p' => send_ack(message_sink, Sk8brdMsgs::MsgPowerOff)
+                .await
+                .unwrap(),
             'q' => *quit.lock().await = true,
-            'Q' => *quit.lock().await = true,
+            's' => (), //TODO:
+            'V' => send_ack(message_sink, Sk8brdMsgs::MsgVbusOn).await.unwrap(),
+            'v' => send_ack(message_sink, Sk8brdMsgs::MsgVbusOff)
+                .await
+                .unwrap(),
             _ => (),
         }
     } else {
         match c.try_into() {
             Ok(1u8) => *special = true, // CTRL-A, TODO: configurable?
-            Ok(_) => send_msg(message_sink, Sk8brdMsgs::MsgConsole, &[c as u8])
-                .await
-                .unwrap(),
+            Ok(_) => send_console(message_sink, &[c as u8]).await.unwrap(),
             Err(_) => (),
         }
     }

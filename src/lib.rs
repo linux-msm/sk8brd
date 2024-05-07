@@ -142,19 +142,15 @@ pub async fn select_brd(write_sink: &mut Arc<Mutex<impl Write>>, name: &str) -> 
     send_msg(write_sink, Sk8brdMsgs::MsgSelectBoard, name.as_bytes()).await
 }
 
-pub async fn send_vbus_ctrl(
+pub async fn send_break(write_sink: &mut Arc<Mutex<impl Write>>) -> anyhow::Result<()> {
+    send_ack(write_sink, Sk8brdMsgs::MsgSendBreak).await
+}
+
+pub async fn send_console(
     write_sink: &mut Arc<Mutex<impl Write>>,
-    en: bool,
+    buf: &[u8],
 ) -> anyhow::Result<()> {
-    send_ack(
-        write_sink,
-        if en {
-            Sk8brdMsgs::MsgVbusOn
-        } else {
-            Sk8brdMsgs::MsgVbusOff
-        },
-    )
-    .await
+    send_msg(write_sink, Sk8brdMsgs::MsgConsole, buf).await
 }
 
 #[allow(clippy::explicit_write)]
