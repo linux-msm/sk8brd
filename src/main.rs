@@ -65,7 +65,8 @@ async fn handle_keypress(
 macro_rules! todo {
     ($s: expr) => {{
         let val = format!($s);
-        writeln!(stdout(), "{val}\r").unwrap();
+        println!("{val}\r");
+        stdout().flush()?;
     }};
 }
 
