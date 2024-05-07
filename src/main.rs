@@ -135,7 +135,10 @@ async fn main() -> anyhow::Result<()> {
         // Stream of "blue text" - status updates from the server
         if let Ok(bytes_read) = (*get_arc!(chan)).stderr().read(&mut buf) {
             let s = String::from_utf8_lossy(&buf[..bytes_read]);
-            writeln!(stdout(), "{}\r", s.blue())?;
+            print!(
+                "{}\r",
+                s.split('\n').collect::<Vec<_>>().join("\r\n").blue()
+            );
             stdout().flush()?;
         }
 
