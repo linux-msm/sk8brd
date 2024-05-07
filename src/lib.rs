@@ -111,7 +111,7 @@ pub async fn send_image(write_sink: &mut Arc<Mutex<impl Write>>, buf: &[u8]) -> 
 
         if percent_done != last_percent_done {
             let s = format!(" Sending image: {}%\r", percent_done);
-            write!(stdout(), "{}", s.green()).unwrap();
+            print!("{}", s.green());
             stdout().flush()?;
         }
 
@@ -121,8 +121,9 @@ pub async fn send_image(write_sink: &mut Arc<Mutex<impl Write>>, buf: &[u8]) -> 
         last_percent_done = percent_done;
 
         if bytes_sent == buf.len() {
-            write!(stdout(), "\r{}\r", " ".repeat(80))?;
-            write!(stdout(), "{}\r\n", String::from("Image sent!").green())?;
+            print!("\r{}\r", " ".repeat(80));
+            print!("{}\r\n", String::from("Image sent!").green());
+            stdout().flush()?;
         }
     }
 
@@ -154,7 +155,7 @@ pub fn print_string_msg(buf: &[u8]) {
         return;
     }
 
-    writeln!(stdout(), "{}\r", String::from_utf8_lossy(buf)).unwrap();
+    println!("{}\r", String::from_utf8_lossy(buf));
     stdout().flush().unwrap();
 }
 
