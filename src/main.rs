@@ -3,7 +3,7 @@ use clap::Parser;
 use colored::Colorize;
 use sk8brd::{
     console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_break,
-    send_console, send_image, send_msg, Sk8brdMsgs, MSG_HDR_SIZE,
+    send_console, send_image, send_msg, todo, Sk8brdMsgs, MSG_HDR_SIZE,
 };
 use ssh2::Session;
 use std::fs;
@@ -15,6 +15,12 @@ use tokio::sync::Mutex;
 const SSH_BUFFER_SIZE: usize = 2048;
 const CDBA_SERVER_BIN_NAME: &str = "cdba-server";
 const USERNAME: &str = "cdba";
+
+macro_rules! get_arc {
+    ($a: expr) => {{
+        $a.lock().await
+    }};
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -55,7 +61,7 @@ async fn handle_keypress(
             'p' => send_ack(message_sink, Sk8brdMsgs::MsgPowerOff)
                 .await
                 .unwrap(),
-            'q' => *quit.lock().await = true,
+            'q' => *get_arc!(quit) = true,
             's' => (), //TODO:
             'V' => send_ack(message_sink, Sk8brdMsgs::MsgVbusOn).await.unwrap(),
             'v' => send_ack(message_sink, Sk8brdMsgs::MsgVbusOff)
@@ -70,20 +76,6 @@ async fn handle_keypress(
             Err(_) => (),
         }
     }
-}
-
-macro_rules! todo {
-    ($s: expr) => {{
-        let val = format!($s);
-        println!("{val}\r");
-        stdout().flush()?;
-    }};
-}
-
-macro_rules! get_arc {
-    ($a: expr) => {{
-        $a.lock().await
-    }};
 }
 
 // For raw mode TTY
@@ -133,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
         let mut stdin = os_pipe::dup_stdin().expect("Couldn't dup stdin");
         let mut ctrl_a_pressed = false;
 
-        while !*quit2.lock().await {
+        while !*get_arc!(quit2) {
             if let Ok(len) = stdin.read(&mut key_buf) {
                 for c in key_buf[0..len].iter() {
                     handle_keypress(*c as char, &mut quit2, &mut ctrl_a_pressed, &mut chan2).await;
@@ -142,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    while !*quit.lock().await {
+    while !*get_arc!(quit) {
         // Stream of "blue text" - status updates from the server
         if let Ok(bytes_read) = (*get_arc!(chan)).stderr().read(&mut buf) {
             let s = String::from_utf8_lossy(&buf[..bytes_read]);

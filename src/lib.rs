@@ -163,4 +163,11 @@ pub fn print_string_msg(buf: &[u8]) {
     stdout().flush().unwrap();
 }
 
-pub fn list_boards() {}
+#[macro_export]
+macro_rules! todo {
+    ($s: expr) => {{
+        let val = format!($s);
+        println!("{val}\r");
+        stdout().flush()?;
+    }};
+}
