@@ -5,6 +5,9 @@ use std::mem::size_of;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+pub const CDBA_SERVER_BIN_NAME: &str = "cdba-server";
+pub const USERNAME: &str = "cdba";
+
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]

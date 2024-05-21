@@ -1,20 +1,18 @@
-use anyhow::Context as _;
 use clap::Parser;
 use colored::Colorize;
 use sk8brd::{
     console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_break,
     send_console, send_image, send_msg, todo, Sk8brdMsgs, MSG_HDR_SIZE,
 };
-use ssh2::Session;
+use ssh::{ssh_connect, ssh_disconnect, ssh_get_chan};
 use std::fs;
 use std::io::{stdout, Read, Write};
-use std::net::TcpStream;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+mod ssh;
+
 const SSH_BUFFER_SIZE: usize = 2048;
-const CDBA_SERVER_BIN_NAME: &str = "cdba-server";
-const USERNAME: &str = "cdba";
 
 macro_rules! get_arc {
     ($a: expr) => {{
@@ -92,22 +90,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("sk8brd {}", env!("CARGO_PKG_VERSION"));
 
-    // Connect to the local SSH server
-    let tcp = TcpStream::connect(format!("{}:{}", args.farm, args.port))
-        .with_context(|| format!("Couldn't connect to {}:{}", args.farm, args.port))?;
-    let mut sess = Session::new()?;
-    sess.set_tcp_stream(tcp);
-    sess.handshake()?;
-
-    // Try to authenticate with the first identity in the agent.
-    sess.userauth_agent(USERNAME)
-        .with_context(|| format!("Couldn't authenticate as {USERNAME}"))?;
-
-    let mut chan = Arc::new(Mutex::new(sess.channel_session()?));
-    (*get_arc!(chan))
-        .exec(CDBA_SERVER_BIN_NAME)
-        .with_context(|| format!("Couldn't execute {CDBA_SERVER_BIN_NAME} on remote host"))?;
-
+    let mut sess = ssh_connect(args.farm, args.port).await?;
+    let mut chan = ssh_get_chan(&mut sess).await?;
     sess.set_blocking(false);
 
     send_ack(&mut chan, Sk8brdMsgs::MsgListDevices).await?;
@@ -196,12 +180,7 @@ async fn main() -> anyhow::Result<()> {
     // Power off the board on goodbye
     send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff).await?;
 
-    sess.disconnect(
-        Option::Some(ssh2::DisconnectCode::ConnectionLost),
-        "bye",
-        Option::Some("C"),
-    )
-    .context("Couldn't disconnect cleanly")?;
+    ssh_disconnect(&mut sess).await?;
 
     println!("\nGoodbye");
     Ok(())
