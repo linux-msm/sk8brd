@@ -1,32 +1,3 @@
-[package]
-name = "sk8brd"
-version = "0.1.0"
-edition = "2021"
-authors = ["Konrad Dybcio <konradybcio@kernel.org>"]
-license = "BSD-3-Clause"
-description = "Simple remote devboard control software"
-readme = "README.md"
-repository = "https://github.com/linux-msm/sk8brd"
-categories = ["command-line-utilities"]
-publish = false # TODO
-
-[badges]
-maintenance = { status = "actively-developed" }
-
-[[bin]]
-name = "sk8brd"
-path = "src/main.rs"
-
-[lib]
-name = "sk8brd"
-path = "src/lib.rs"
-
-[dependencies]
-anyhow = "1.0"
-clap = { version = "4.5.4", features = ["derive"] }
-colored = "2.1.0"
-crossterm = "0.27.0"
-os_pipe = "1.1.5"
-serde = { version = "^1.0.198", features = ["derive"] }
-ssh2 = "^0.9.4"
-tokio = { version = "^1.37.0", features = ["full"] }
+[workspace]
+members = ["client", "proto"]
+resolver = "2"

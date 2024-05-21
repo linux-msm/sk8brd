@@ -1,16 +1,14 @@
 use clap::Parser;
 use colored::Colorize;
+use sk8brd::ssh::{ssh_connect, ssh_disconnect, ssh_get_chan};
 use sk8brd::{
     console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_break,
-    send_console, send_image, send_msg, todo, Sk8brdMsgs, MSG_HDR_SIZE,
+    send_console, send_image, send_msg, todo, Sk8brdMsgs, CDBA_SERVER_BIN_NAME, MSG_HDR_SIZE,
 };
-use ssh::{ssh_connect, ssh_disconnect, ssh_get_chan};
 use std::fs;
 use std::io::{stdout, Read, Write};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-mod ssh;
 
 const SSH_BUFFER_SIZE: usize = 2048;
 
@@ -90,8 +88,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("sk8brd {}", env!("CARGO_PKG_VERSION"));
 
-    let mut sess = ssh_connect(args.farm, args.port).await?;
-    let mut chan = ssh_get_chan(&mut sess).await?;
+    let mut sess = ssh_connect(args.farm, args.port, args.user).await?;
+    let mut chan = ssh_get_chan(&mut sess, CDBA_SERVER_BIN_NAME).await?;
     sess.set_blocking(false);
 
     send_ack(&mut chan, Sk8brdMsgs::MsgListDevices).await?;

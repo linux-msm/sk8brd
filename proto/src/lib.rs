@@ -5,8 +5,10 @@ use std::mem::size_of;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+#[cfg(feature = "ssh")]
+pub mod ssh;
+
 pub const CDBA_SERVER_BIN_NAME: &str = "cdba-server";
-pub const USERNAME: &str = "cdba";
 
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
