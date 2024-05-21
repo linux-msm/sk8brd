@@ -4,6 +4,8 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+pub const SSH_BUFFER_SIZE: usize = 2048;
+
 pub async fn ssh_connect(farm: String, port: String, username: String) -> anyhow::Result<Session> {
     // Connect to the local SSH server
     let tcp = TcpStream::connect(format!("{}:{}", farm, port))

@@ -1,6 +1,6 @@
 use clap::Parser;
 use colored::Colorize;
-use sk8brd::ssh::{ssh_connect, ssh_disconnect, ssh_get_chan};
+use sk8brd::ssh::{ssh_connect, ssh_disconnect, ssh_get_chan, SSH_BUFFER_SIZE};
 use sk8brd::{
     console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_break,
     send_console, send_image, send_msg, todo, Sk8brdMsgs, CDBA_SERVER_BIN_NAME, MSG_HDR_SIZE,
@@ -9,8 +9,6 @@ use std::fs;
 use std::io::{stdout, Read, Write};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-const SSH_BUFFER_SIZE: usize = 2048;
 
 macro_rules! get_arc {
     ($a: expr) => {{
