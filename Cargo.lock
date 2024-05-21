@@ -533,6 +533,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk8brd-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "colored",
+ "crossterm",
+ "os_pipe",
+ "serde",
+ "sk8brd-proto",
+ "ssh2",
+ "tokio",
+]
+
+[[package]]
 name = "sk8brd-proto"
 version = "0.1.0"
 dependencies = [
