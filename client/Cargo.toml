@@ -22,7 +22,7 @@ anyhow = "1.0"
 clap = { version = "4.5.4", features = ["derive"] }
 colored = "2.1.0"
 crossterm = "0.27.0"
-sk8brd-proto = { path = "../proto", features = ["ssh"] }
+sk8brd-proto = { version = "^0.1.0", path = "../proto", features = ["ssh"] }
 os_pipe = "1.1.5"
 serde = { version = "^1.0.198", features = ["derive"] }
 ssh2 = "^0.9.4"
