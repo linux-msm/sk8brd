@@ -8,7 +8,6 @@ description = "Simple remote devboard control software"
 readme = "README.md"
 repository = "https://github.com/linux-msm/sk8brd"
 categories = ["command-line-utilities"]
-publish = false # TODO
 default-run = "sk8brd"
 
 [badges]
