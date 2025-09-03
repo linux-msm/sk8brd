@@ -1,14 +1,17 @@
+use anyhow::Context;
 use clap::Parser;
 use colored::Colorize;
-use sk8brd::ssh::{ssh_connect, ssh_disconnect, ssh_get_chan, SSH_BUFFER_SIZE};
+use russh::client::Msg;
+use sk8brd::ssh::{ssh_connect, SSH_BUFFER_SIZE};
 use sk8brd::{
     console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_image, todo,
     Sk8brdMsgs, CDBA_SERVER_BIN_NAME, MSG_HDR_SIZE,
 };
 use std::fs;
-use std::io::{stdout, Read, Write};
+use std::io::{stdout, Write};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
 #[derive(Parser, Debug)]
@@ -48,22 +51,30 @@ async fn main() -> anyhow::Result<()> {
 
     println!("sk8brd-cli {}", env!("CARGO_PKG_VERSION"));
 
-    let mut sess = ssh_connect(args.farm, args.port, args.user).await?;
-    sess.set_blocking(true);
-    let mut chan = ssh_get_chan(&mut sess, CDBA_SERVER_BIN_NAME).await?;
+    let chan = Arc::new(Mutex::new(
+        ssh_connect(&format!("{}:{}", args.farm, args.port), args.user).await?,
+    ));
+    (*chan.lock().await)
+        .exec(true, CDBA_SERVER_BIN_NAME)
+        .await
+        .with_context(|| format!("Couldn't execute {CDBA_SERVER_BIN_NAME} on remote server"))?;
+
+    let mut server_stdin = Arc::new(Mutex::new((*chan.lock().await).make_writer()));
+    let (server_stdout, server_stderr) = sk8brd::ssh::into_streams::<Msg>(chan).await;
+    let server_stdout = Arc::new(Mutex::new(server_stdout));
+    let server_stderr = Arc::new(Mutex::new(server_stderr));
 
     if args.board.is_empty() {
-        send_ack(&mut chan, Sk8brdMsgs::MsgListDevices).await?;
+        send_ack(&mut server_stdin, Sk8brdMsgs::MsgListDevices).await?;
     } else {
-        select_brd(&mut chan, &args.board).await?;
+        select_brd(&mut server_stdin, &args.board).await?;
     }
 
     // Msg handler
     // Read the message header first
     while time.elapsed()? < Duration::from_secs(args.timeout) {
         // Stream of "blue text" - status updates from the server
-        sess.set_blocking(false);
-        if let Ok(bytes_read) = (*chan.lock().await).stderr().read(&mut buf) {
+        if let Ok(bytes_read) = (*server_stderr.lock().await).read(&mut buf).await {
             let s = String::from_utf8_lossy(&buf[..bytes_read]);
             print!(
                 "{}\r",
@@ -71,19 +82,24 @@ async fn main() -> anyhow::Result<()> {
             );
             stdout().flush()?;
         }
-        sess.set_blocking(true);
 
-        if (*chan.lock().await).read_exact(&mut hdr_buf).is_ok() {
+        if (*server_stdout.lock().await)
+            .read_exact(&mut hdr_buf)
+            .await
+            .is_ok()
+        {
             let msg = parse_recv_msg(&hdr_buf);
             let mut msgbuf = vec![0u8; msg.len as usize];
 
             // Now read the actual data...
-            (*chan.lock().await).read_exact(&mut msgbuf)?;
+            (*server_stderr.lock().await)
+                .read_exact(&mut msgbuf)
+                .await?;
 
             // ..and process it
             match msg.r#type.try_into() {
                 Ok(Sk8brdMsgs::MsgSelectBoard) => {
-                    send_ack(&mut chan, Sk8brdMsgs::MsgPowerOn).await?
+                    send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOn).await?
                 }
                 Ok(Sk8brdMsgs::MsgConsole) => {
                     if args.verbose {
@@ -96,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Ok(Sk8brdMsgs::MsgFastbootPresent) => {
                     if !msgbuf.is_empty() && msgbuf[0] != 0 {
-                        send_image(&mut chan, &fastboot_image, &quit).await?
+                        send_image(&mut server_stdin, &fastboot_image, &quit).await?
                     }
                 }
                 Ok(Sk8brdMsgs::MsgFastbootDownload) => (),
@@ -115,9 +131,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Power off the board on goodbye
-    send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff).await?;
+    send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOff).await?;
 
-    ssh_disconnect(&mut sess).await?;
+    // ssh_disconnect(&mut sess).await?;
 
     println!("\nGoodbye");
     Ok(())

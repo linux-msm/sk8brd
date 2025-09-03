@@ -1,8 +1,9 @@
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::mem::size_of;
 use std::sync::Arc;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
 
 #[cfg(feature = "ssh")]
@@ -68,7 +69,7 @@ pub struct Sk8brdMsg {
 pub const MSG_HDR_SIZE: usize = size_of::<Sk8brdMsg>();
 
 pub async fn send_msg(
-    write_sink: &mut Arc<Mutex<impl Write>>,
+    write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
     r#type: Sk8brdMsgs,
     buf: &[u8],
 ) -> anyhow::Result<()> {
@@ -78,13 +79,13 @@ pub async fn send_msg(
     let len = buf.len();
     let hdr = [r#type as u8, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8];
 
-    write_sink.write_all(&hdr)?;
-    write_sink.write_all(buf)?;
+    write_sink.write_all(&hdr).await?;
+    write_sink.write_all(buf).await?;
     Ok(())
 }
 
 pub async fn send_ack(
-    write_sink: &mut Arc<Mutex<impl Write>>,
+    write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
     r#type: Sk8brdMsgs,
 ) -> anyhow::Result<()> {
     send_msg(write_sink, r#type, &[]).await
@@ -93,7 +94,7 @@ pub async fn send_ack(
 pub fn parse_recv_msg(buf: &[u8]) -> Sk8brdMsg {
     let msg: Sk8brdMsg = Sk8brdMsg {
         r#type: buf[0],
-        len: (buf[2] as u16) << 8 | buf[1] as u16,
+        len: ((buf[2] as u16) << 8) | buf[1] as u16,
     };
 
     // println!("{:?}", msg);
@@ -108,7 +109,7 @@ pub async fn console_print(buf: &[u8]) {
 
 #[allow(clippy::explicit_write)]
 pub async fn send_image(
-    write_sink: &mut Arc<Mutex<impl Write>>,
+    write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
     buf: &[u8],
     quit: &Arc<Mutex<bool>>,
 ) -> anyhow::Result<()> {
@@ -123,7 +124,7 @@ pub async fn send_image(
         }
 
         if percent_done != last_percent_done {
-            let s = format!("Sending image: {}%\r", percent_done);
+            let s = format!("Sending image: {percent_done}%\r");
             print!("{}", s.green());
             stdout().flush()?;
         }
@@ -143,16 +144,21 @@ pub async fn send_image(
     send_ack(write_sink, Sk8brdMsgs::MsgFastbootDownload).await
 }
 
-pub async fn select_brd(write_sink: &mut Arc<Mutex<impl Write>>, name: &str) -> anyhow::Result<()> {
+pub async fn select_brd(
+    write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
+    name: &str,
+) -> anyhow::Result<()> {
     send_msg(write_sink, Sk8brdMsgs::MsgSelectBoard, name.as_bytes()).await
 }
 
-pub async fn send_break(write_sink: &mut Arc<Mutex<impl Write>>) -> anyhow::Result<()> {
+pub async fn send_break(
+    write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
+) -> anyhow::Result<()> {
     send_ack(write_sink, Sk8brdMsgs::MsgSendBreak).await
 }
 
 pub async fn send_console(
-    write_sink: &mut Arc<Mutex<impl Write>>,
+    write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
     buf: &[u8],
 ) -> anyhow::Result<()> {
     send_msg(write_sink, Sk8brdMsgs::MsgConsole, buf).await

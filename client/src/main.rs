@@ -1,6 +1,8 @@
+use anyhow::Context;
 use clap::Parser;
 use colored::Colorize;
-use sk8brd::ssh::{ssh_connect, ssh_disconnect, ssh_get_chan, SSH_BUFFER_SIZE};
+use russh::client::Msg;
+use sk8brd::ssh::{ssh_connect, SSH_BUFFER_SIZE};
 use sk8brd::{
     console_print, parse_recv_msg, print_string_msg, select_brd, send_ack, send_break,
     send_console, send_image, send_msg, todo, Sk8brdMsgs, CDBA_SERVER_BIN_NAME, MSG_HDR_SIZE,
@@ -8,6 +10,7 @@ use sk8brd::{
 use std::fs;
 use std::io::{stdout, Read, Write};
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::sync::Mutex;
 
 macro_rules! get_arc {
@@ -42,7 +45,7 @@ async fn handle_keypress(
     c: char,
     quit: &mut Arc<Mutex<bool>>,
     special: &mut bool,
-    message_sink: &mut Arc<Mutex<impl Write>>,
+    message_sink: &mut Arc<Mutex<impl AsyncWrite + Unpin>>,
 ) {
     if *special {
         *special = false;
@@ -86,21 +89,31 @@ async fn main() -> anyhow::Result<()> {
 
     println!("sk8brd {}", env!("CARGO_PKG_VERSION"));
 
-    let mut sess = ssh_connect(args.farm, args.port, args.user).await?;
-    let mut chan = ssh_get_chan(&mut sess, CDBA_SERVER_BIN_NAME).await?;
-    sess.set_blocking(false);
+    let chan = Arc::new(Mutex::new(
+        ssh_connect(&format!("{}:{}", args.farm, args.port), args.user).await?,
+    ));
+    get_arc!(chan)
+        .exec(true, CDBA_SERVER_BIN_NAME)
+        .await
+        .with_context(|| format!("Couldn't execute {CDBA_SERVER_BIN_NAME} on remote server"))?;
 
-    send_ack(&mut chan, Sk8brdMsgs::MsgListDevices).await?;
-    select_brd(&mut chan, &args.board).await?;
+    let mut server_stdin = Arc::new(Mutex::new(get_arc!(chan).make_writer()));
+
+    let (server_stdout, server_stderr) = sk8brd::ssh::into_streams::<Msg>(chan).await;
+    let server_stdout = Arc::new(Mutex::new(server_stdout));
+    let server_stderr = Arc::new(Mutex::new(server_stderr));
+
+    send_ack(&mut server_stdin, Sk8brdMsgs::MsgListDevices).await?;
+    select_brd(&mut server_stdin, &args.board).await?;
     if args.power_cycle {
         println!("Powering off the board first");
-        send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff).await?;
+        send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOff).await?;
     }
 
     crossterm::terminal::enable_raw_mode()?;
 
     let mut quit2 = Arc::clone(&quit);
-    let mut chan2 = Arc::clone(&chan);
+    let mut server_stdin2 = Arc::clone(&server_stdin);
     let stdin_handler = tokio::spawn(async move {
         let mut stdin = os_pipe::dup_stdin().expect("Couldn't dup stdin");
         let mut ctrl_a_pressed = false;
@@ -108,7 +121,13 @@ async fn main() -> anyhow::Result<()> {
         while !*get_arc!(quit2) {
             if let Ok(len) = stdin.read(&mut key_buf) {
                 for c in key_buf[0..len].iter() {
-                    handle_keypress(*c as char, &mut quit2, &mut ctrl_a_pressed, &mut chan2).await;
+                    handle_keypress(
+                        *c as char,
+                        &mut quit2,
+                        &mut ctrl_a_pressed,
+                        &mut server_stdin2,
+                    )
+                    .await;
                 }
             };
         }
@@ -116,7 +135,7 @@ async fn main() -> anyhow::Result<()> {
 
     while !*get_arc!(quit) {
         // Stream of "blue text" - status updates from the server
-        if let Ok(bytes_read) = (*get_arc!(chan)).stderr().read(&mut buf) {
+        if let Ok(bytes_read) = (*get_arc!(server_stderr)).read(&mut buf).await {
             let s = String::from_utf8_lossy(&buf[..bytes_read]);
             print!(
                 "{}\r",
@@ -127,18 +146,21 @@ async fn main() -> anyhow::Result<()> {
 
         // Msg handler
         // Read the message header first
-        if (*get_arc!(chan)).read_exact(&mut hdr_buf).is_ok() {
-            sess.set_blocking(true);
+        if (*get_arc!(server_stdout))
+            .read_exact(&mut hdr_buf)
+            .await
+            .is_ok()
+        {
             let msg = parse_recv_msg(&hdr_buf);
             let mut msgbuf = vec![0u8; msg.len as usize];
 
             // Now read the actual data...
-            (*get_arc!(chan)).read_exact(&mut msgbuf)?;
+            (*get_arc!(server_stdout)).read_exact(&mut msgbuf).await?;
 
             // ..and process it
             match msg.r#type.try_into() {
                 Ok(Sk8brdMsgs::MsgSelectBoard) => {
-                    send_msg(&mut chan, Sk8brdMsgs::MsgPowerOn, &[]).await?
+                    send_msg(&mut server_stdin, Sk8brdMsgs::MsgPowerOn, &[]).await?
                 }
                 Ok(Sk8brdMsgs::MsgConsole) => console_print(&msgbuf).await,
                 Ok(Sk8brdMsgs::MsgHardReset) => todo!("MsgHardReset is unused"),
@@ -146,7 +168,7 @@ async fn main() -> anyhow::Result<()> {
                 Ok(Sk8brdMsgs::MsgPowerOff) => (),
                 Ok(Sk8brdMsgs::MsgFastbootPresent) => {
                     if !msgbuf.is_empty() && msgbuf[0] != 0 {
-                        send_image(&mut chan, &fastboot_image, &quit).await?
+                        send_image(&mut server_stdin, &fastboot_image, &quit).await?
                     }
                 }
                 Ok(Sk8brdMsgs::MsgFastbootDownload) => (),
@@ -163,7 +185,6 @@ async fn main() -> anyhow::Result<()> {
                 Ok(m) => todo!("{m:?} is unimplemented, skipping.."),
                 Err(e) => todo!("Received unknown/invalid message: `{e}`"),
             };
-            sess.set_blocking(false);
         }
     }
 
@@ -174,9 +195,9 @@ async fn main() -> anyhow::Result<()> {
     crossterm::terminal::disable_raw_mode()?;
 
     // Power off the board on goodbye
-    send_ack(&mut chan, Sk8brdMsgs::MsgPowerOff).await?;
+    send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOff).await?;
 
-    ssh_disconnect(&mut sess).await?;
+    // ssh_disconnect(&mut sess).await?;
 
     println!("\nGoodbye");
     Ok(())
