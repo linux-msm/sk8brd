@@ -19,11 +19,11 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5.4", features = ["derive"] }
-colored = "2.1.0"
-crossterm = "0.27.0"
-sk8brd-proto = { version = "^0.1.0", path = "../proto", features = ["ssh"] }
-os_pipe = "1.1.5"
-serde = { version = "^1.0.198", features = ["derive"] }
-ssh2 = "^0.9.4"
-tokio = { version = "^1.37.0", features = ["full"] }
+clap = { version = "4.5.31", features = ["derive"] }
+colored = "3.0.0"
+crossterm = "0.28.1"
+sk8brd-proto = { path = "../proto", features = ["ssh"] }
+os_pipe = "1.2.1"
+serde = { version = "1.0.218", features = ["derive"] }
+tokio = { version = "1.43.0", features = ["full"] }
+russh = "0.50.4"
