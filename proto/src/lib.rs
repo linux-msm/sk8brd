@@ -67,7 +67,7 @@ pub struct Sk8brdMsg {
     pub len: u16,
 }
 pub const MSG_HDR_SIZE: usize = size_of::<Sk8brdMsg>();
-const IMAGE_CHUNK_SIZE: usize = 8 * 1024;
+pub const IMAGE_CHUNK_SIZE: usize = 8 * 1024;
 
 pub async fn send_msg(
     write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
@@ -79,7 +79,7 @@ pub async fn send_msg(
     write_msg(&mut *write_sink, r#type, buf).await
 }
 
-async fn write_msg(
+pub async fn write_msg(
     write_sink: &mut (impl AsyncWrite + std::marker::Unpin),
     r#type: Sk8brdMsgs,
     buf: &[u8],

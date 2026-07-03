@@ -109,7 +109,7 @@ pub async fn ssh_connect(farm: &str, username: String) -> anyhow::Result<Channel
     let chan = sess
         .channel_open_session()
         .await
-        .expect("Couldn't open session");
+        .context("could not open SSH session")?;
 
     Ok(chan)
 }

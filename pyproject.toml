@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[project]
+name = "sk8brd-cdba"
+version = "0.1.0"
+description = "Python bindings for the sk8brd cdba client"
+requires-python = ">=3.9"
+
+[tool.maturin]
+manifest-path = "python/Cargo.toml"
+module-name = "sk8brd_cdba"
+features = ["pyo3/extension-module"]

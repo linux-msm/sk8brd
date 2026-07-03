@@ -1,0 +1,20 @@
+[package]
+name = "sk8brd-python"
+version = "0.1.0"
+edition = "2021"
+authors = ["Konrad Dybcio <konradybcio@kernel.org>"]
+license = "BSD-3-Clause"
+description = "Python bindings for the sk8brd cdba client"
+repository = "https://github.com/linux-msm/sk8brd"
+publish = false
+
+[lib]
+name = "sk8brd_cdba"
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = "1.0"
+pyo3 = "0.29.0"
+russh = "0.50.4"
+sk8brd-proto = { path = "../proto", features = ["ssh"] }
+tokio = { version = "1.43.0", features = ["full"] }
