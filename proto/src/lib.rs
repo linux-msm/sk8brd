@@ -67,6 +67,7 @@ pub struct Sk8brdMsg {
     pub len: u16,
 }
 pub const MSG_HDR_SIZE: usize = size_of::<Sk8brdMsg>();
+const IMAGE_CHUNK_SIZE: usize = 8 * 1024;
 
 pub async fn send_msg(
     write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
@@ -75,9 +76,16 @@ pub async fn send_msg(
 ) -> anyhow::Result<()> {
     // Make sure we're not trying to send two messages at once
     let mut write_sink = write_sink.lock().await;
+    write_msg(&mut *write_sink, r#type, buf).await
+}
 
-    let len = buf.len();
-    let hdr = [r#type as u8, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8];
+async fn write_msg(
+    write_sink: &mut (impl AsyncWrite + std::marker::Unpin),
+    r#type: Sk8brdMsgs,
+    buf: &[u8],
+) -> anyhow::Result<()> {
+    let len = u16::try_from(buf.len())?;
+    let hdr = [r#type as u8, (len & 0xff) as u8, (len >> 8) as u8];
 
     write_sink.write_all(&hdr).await?;
     write_sink.write_all(buf).await?;
@@ -116,7 +124,9 @@ pub async fn send_image(
     let mut last_percent_done: usize = 0;
     let mut bytes_sent = 0;
 
-    for chunk in buf.chunks(2048) {
+    let mut write_sink = write_sink.lock().await;
+
+    for chunk in buf.chunks(IMAGE_CHUNK_SIZE) {
         let percent_done = 100 * bytes_sent / buf.len();
 
         if *quit.lock().await {
@@ -129,7 +139,7 @@ pub async fn send_image(
             stdout().flush()?;
         }
 
-        send_msg(write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk).await?;
+        write_msg(&mut *write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk).await?;
 
         bytes_sent += chunk.len();
         last_percent_done = percent_done;
@@ -141,7 +151,20 @@ pub async fn send_image(
         }
     }
 
-    send_ack(write_sink, Sk8brdMsgs::MsgFastbootDownload).await
+    write_msg(&mut *write_sink, Sk8brdMsgs::MsgFastbootDownload, &[]).await
+}
+
+pub async fn send_image_quiet(
+    write_sink: &mut Arc<Mutex<impl AsyncWrite + std::marker::Unpin>>,
+    buf: &[u8],
+) -> anyhow::Result<()> {
+    let mut write_sink = write_sink.lock().await;
+
+    for chunk in buf.chunks(IMAGE_CHUNK_SIZE) {
+        write_msg(&mut *write_sink, Sk8brdMsgs::MsgFastbootDownload, chunk).await?;
+    }
+
+    write_msg(&mut *write_sink, Sk8brdMsgs::MsgFastbootDownload, &[]).await
 }
 
 pub async fn select_brd(
