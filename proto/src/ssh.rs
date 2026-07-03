@@ -171,13 +171,7 @@ where
                 Some(russh::ChannelMsg::ExtendedData { data: _, ext }) => {
                     println!("Received surprise data on stream {ext}");
                 }
-                Some(russh::ChannelMsg::Eof) => {
-                    // Send a 0-length chunk to indicate EOF.
-                    txo.send(vec![])
-                        .await
-                        .map_err(|_| russh::Error::SendError)?;
-                    break;
-                }
+                Some(russh::ChannelMsg::Eof) => break,
                 None => break,
                 _ => (),
             }
@@ -196,23 +190,23 @@ impl AsyncRead for Wrap {
         cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        let cache_size = self.1.len();
-        buf.put_slice(&self.1.split_to(usize::min(buf.remaining(), cache_size)));
+        if !self.1.is_empty() {
+            let n = usize::min(buf.remaining(), self.1.len());
+            buf.put_slice(&self.1.split_to(n));
+            return Poll::Ready(Ok(()));
+        }
 
-        if buf.remaining() > 0 {
-            match self.0.poll_recv(cx) {
-                Poll::Ready(Some(msg)) => {
-                    self.1 = BytesMut::from(&msg[..]);
-                    let len = self.1.len();
-                    buf.put_slice(&self.1.split_to(usize::min(buf.remaining(), len)));
-                    Poll::Ready(Ok(()))
+        match self.0.poll_recv(cx) {
+            Poll::Ready(Some(msg)) => {
+                self.1 = BytesMut::from(&msg[..]);
+                if !self.1.is_empty() {
+                    let n = usize::min(buf.remaining(), self.1.len());
+                    buf.put_slice(&self.1.split_to(n));
                 }
-
-                Poll::Ready(None) => Poll::Ready(Ok(())),
-                Poll::Pending => Poll::Pending,
+                Poll::Ready(Ok(()))
             }
-        } else {
-            Poll::Ready(Ok(()))
+            Poll::Ready(None) => Poll::Ready(Ok(())),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
