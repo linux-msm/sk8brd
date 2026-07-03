@@ -29,6 +29,10 @@ The `sk8brd-cdba` package exposes the sk8brd cdba client as `sk8brd_cdba`:
 ```sh
 python -m pip install maturin
 maturin develop
+python examples/python_cdba/boot_linux.py \
+  --host <host> \
+  --board <board> \
+  --image <path/to/boot.img>
 ```
 
 ## License
