@@ -2,7 +2,9 @@ use anyhow::{Context as _, bail};
 use asynchronous_codec::BytesMut;
 use russh::Channel;
 use russh::client::{self, Msg};
-use russh::keys::{HashAlg, ssh_key};
+use russh::keys::load_secret_key;
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, ssh_key};
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -29,40 +31,78 @@ pub async fn ssh_connect(farm: &str, username: String) -> anyhow::Result<Channel
     // Connect to the local SSH server
     let config = client::Config::default();
     let client = Client {};
-    #[cfg(unix)]
-    let agent = russh::keys::agent::client::AgentClient::connect_env().await;
-    #[cfg(windows)]
-    let agent = russh::keys::agent::client::AgentClient::connect_named_pipe(
-        "\\\\.\\\\pipe\\\\openssh-ssh-agent",
-    )
-    .await;
-
-    let mut agent = agent.expect("Couldn't authenticate with the ssh agent");
 
     let mut sess = client::connect(Arc::new(config), farm, client)
         .await
         .with_context(|| format!("Couldn't connect to {farm}"))?;
 
-    let keys = agent
-        .request_identities()
+    let mut authenticated = false;
+
+    #[cfg(unix)]
+    let mut agent = russh::keys::agent::client::AgentClient::connect_env()
         .await
-        .expect("Couldn't get identities from the ssh agent");
-    while let Some(key) = keys.first() {
-        if sess
-            .authenticate_publickey_with(
-                &username,
-                key.to_owned(),
-                Some(HashAlg::Sha256),
-                &mut agent,
-            )
+        .ok();
+    #[cfg(windows)]
+    let mut agent =
+        russh::keys::agent::client::AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent")
             .await
-            .is_ok()
-        {
-            break;
+            .ok();
+
+    if let Some(agent) = agent.as_mut()
+        && let Ok(keys) = agent.request_identities().await
+    {
+        for key in keys {
+            if sess
+                .authenticate_publickey_with(
+                    &username,
+                    key.to_owned(),
+                    Some(HashAlg::Sha256),
+                    agent,
+                )
+                .await
+                .map(|result| result.success())
+                .unwrap_or(false)
+            {
+                authenticated = true;
+                break;
+            }
         }
     }
 
-    if sess.is_closed() {
+    if !authenticated {
+        for path in candidate_private_keys() {
+            if !path.is_file() {
+                continue;
+            }
+
+            let key_pair = match load_secret_key(&path, None) {
+                Ok(key_pair) => key_pair,
+                Err(_) => continue,
+            };
+
+            let hash_alg = if key_pair.algorithm().is_rsa() {
+                sess.best_supported_rsa_hash()
+                    .await
+                    .with_context(|| format!("Could not check RSA signatures for {path:?}"))?
+                    .flatten()
+            } else {
+                None
+            };
+            let private_key = PrivateKeyWithHashAlg::new(Arc::new(key_pair), hash_alg);
+
+            if sess
+                .authenticate_publickey(&username, private_key)
+                .await
+                .map(|result| result.success())
+                .unwrap_or(false)
+            {
+                authenticated = true;
+                break;
+            }
+        }
+    }
+
+    if !authenticated || sess.is_closed() {
         bail!("No key was accepted by the server");
     }
 
@@ -72,6 +112,31 @@ pub async fn ssh_connect(farm: &str, username: String) -> anyhow::Result<Channel
         .expect("Couldn't open session");
 
     Ok(chan)
+}
+
+fn candidate_private_keys() -> Vec<PathBuf> {
+    let mut keys = Vec::new();
+
+    if let Ok(key_path) = std::env::var("SK8BRD_SSH_KEY") {
+        keys.push(expand_tilde(key_path));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        keys.push(Path::new(&home).join(".ssh").join("id_ed25519"));
+        keys.push(Path::new(&home).join(".ssh").join("id_rsa"));
+    }
+
+    keys
+}
+
+fn expand_tilde(path: String) -> PathBuf {
+    let path = path.trim().to_string();
+    if let Some(tail) = path.strip_prefix("~/") {
+        return std::env::var("HOME")
+            .ok()
+            .map_or_else(PathBuf::new, |home| Path::new(&home).join(tail));
+    }
+
+    Path::new(&path).to_path_buf()
 }
 
 pub struct Wrap(Receiver<Vec<u8>>, BytesMut);
