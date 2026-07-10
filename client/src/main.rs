@@ -12,6 +12,7 @@ use std::io::{stdout, Read, Write};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::sync::Mutex;
+use tokio::time::timeout;
 
 macro_rules! get_arc {
     ($a: expr) => {{
@@ -79,8 +80,11 @@ async fn handle_keypress(
 #[allow(clippy::explicit_write)]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let mut hdr_buf = [0u8; MSG_HDR_SIZE];
-    let mut buf = [0u8; SSH_BUFFER_SIZE];
+    const MAX_MSG_LEN: usize = 1024 * 1024;
+    let mut stderr_buf = [0u8; SSH_BUFFER_SIZE];
+    let mut stdout_chunk = [0u8; SSH_BUFFER_SIZE];
+    let mut stdout_buf: Vec<u8> = Vec::new();
+    let mut stderr_open = true;
     let mut key_buf = [0u8; 1];
     let quit = Arc::new(Mutex::new(false));
     let args = Args::parse();
@@ -99,9 +103,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut server_stdin = Arc::new(Mutex::new(get_arc!(chan).make_writer()));
 
-    let (server_stdout, server_stderr) = sk8brd::ssh::into_streams::<Msg>(chan).await;
-    let server_stdout = Arc::new(Mutex::new(server_stdout));
-    let server_stderr = Arc::new(Mutex::new(server_stderr));
+    let (mut server_stdout, mut server_stderr) = sk8brd::ssh::into_streams::<Msg>(chan).await;
 
     send_ack(&mut server_stdin, Sk8brdMsgs::MsgListDevices).await?;
     select_brd(&mut server_stdin, &args.board).await?;
@@ -134,57 +136,83 @@ async fn main() -> anyhow::Result<()> {
     });
 
     while !*get_arc!(quit) {
-        // Stream of "blue text" - status updates from the server
-        if let Ok(bytes_read) = (*get_arc!(server_stderr)).read(&mut buf).await {
-            let s = String::from_utf8_lossy(&buf[..bytes_read]);
-            print!(
-                "{}\r",
-                s.split('\n').collect::<Vec<_>>().join("\r\n").blue()
-            );
-            stdout().flush()?;
-        }
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => (),
 
-        // Msg handler
-        // Read the message header first
-        if (*get_arc!(server_stdout))
-            .read_exact(&mut hdr_buf)
-            .await
-            .is_ok()
-        {
-            let msg = parse_recv_msg(&hdr_buf);
-            let mut msgbuf = vec![0u8; msg.len as usize];
-
-            // Now read the actual data...
-            (*get_arc!(server_stdout)).read_exact(&mut msgbuf).await?;
-
-            // ..and process it
-            match msg.r#type.try_into() {
-                Ok(Sk8brdMsgs::MsgSelectBoard) => {
-                    send_msg(&mut server_stdin, Sk8brdMsgs::MsgPowerOn, &[]).await?
-                }
-                Ok(Sk8brdMsgs::MsgConsole) => console_print(&msgbuf).await,
-                Ok(Sk8brdMsgs::MsgHardReset) => todo!("MsgHardReset is unused"),
-                Ok(Sk8brdMsgs::MsgPowerOn) => (),
-                Ok(Sk8brdMsgs::MsgPowerOff) => (),
-                Ok(Sk8brdMsgs::MsgFastbootPresent) => {
-                    if !msgbuf.is_empty() && msgbuf[0] != 0 {
-                        send_image(&mut server_stdin, &fastboot_image, &quit).await?
+            // Stream of "blue text" - status updates from the server
+            stderr_read = server_stderr.read(&mut stderr_buf), if stderr_open => {
+                match stderr_read {
+                    Ok(0) => stderr_open = false,
+                    Ok(bytes_read) => {
+                        let s = String::from_utf8_lossy(&stderr_buf[..bytes_read]);
+                        print!(
+                            "{}\r",
+                            s.split('\n').collect::<Vec<_>>().join("\r\n").blue()
+                        );
+                        stdout().flush()?;
                     }
+                    Err(_) => stderr_open = false,
                 }
-                Ok(Sk8brdMsgs::MsgFastbootDownload) => (),
-                Ok(Sk8brdMsgs::MsgFastbootBoot) => todo!("MsgFastbootBoot is unused"),
-                Ok(Sk8brdMsgs::MsgStatusUpdate) => todo!("MsgStatusUpdate: implement me!"),
-                Ok(Sk8brdMsgs::MsgVbusOn) => todo!("Unexpected MsgVbusOn"),
-                Ok(Sk8brdMsgs::MsgVbusOff) => todo!("Unexpected MsgVbusOff"),
-                Ok(Sk8brdMsgs::MsgFastbootReboot) => todo!("MsgFastbootReboot is unused"),
-                Ok(Sk8brdMsgs::MsgSendBreak) => todo!("MsgSendBreak: implement me!"),
-                Ok(Sk8brdMsgs::MsgListDevices) => print_string_msg(&msgbuf),
-                Ok(Sk8brdMsgs::MsgBoardInfo) => print_string_msg(&msgbuf),
-                Ok(Sk8brdMsgs::MsgFastbootContinue) => (),
+            }
 
-                Ok(m) => todo!("{m:?} is unimplemented, skipping.."),
-                Err(e) => todo!("Received unknown/invalid message: `{e}`"),
-            };
+            // Binary protocol stream on stdout
+            stdout_read = server_stdout.read(&mut stdout_chunk) => {
+                let bytes_read = stdout_read?;
+                if bytes_read == 0 {
+                    break;
+                }
+
+                stdout_buf.extend_from_slice(&stdout_chunk[..bytes_read]);
+
+                // Parse as many complete framed messages as available.
+                loop {
+                    if stdout_buf.len() < MSG_HDR_SIZE {
+                        break;
+                    }
+
+                    let msg = parse_recv_msg(&stdout_buf[..MSG_HDR_SIZE]);
+                    if Sk8brdMsgs::try_from(msg.r#type).is_err() || msg.len as usize > MAX_MSG_LEN {
+                        // Resync in case stdout had unexpected text/noise.
+                        stdout_buf.drain(..1);
+                        continue;
+                    }
+
+                    let total_len = MSG_HDR_SIZE + msg.len as usize;
+                    if stdout_buf.len() < total_len {
+                        break;
+                    }
+
+                    let msgbuf = stdout_buf[MSG_HDR_SIZE..total_len].to_vec();
+                    stdout_buf.drain(..total_len);
+                    match msg.r#type.try_into() {
+                        Ok(Sk8brdMsgs::MsgSelectBoard) => {
+                            send_msg(&mut server_stdin, Sk8brdMsgs::MsgPowerOn, &[]).await?
+                        }
+                        Ok(Sk8brdMsgs::MsgConsole) => console_print(&msgbuf).await,
+                        Ok(Sk8brdMsgs::MsgHardReset) => todo!("MsgHardReset is unused"),
+                        Ok(Sk8brdMsgs::MsgPowerOn) => (),
+                        Ok(Sk8brdMsgs::MsgPowerOff) => (),
+                        Ok(Sk8brdMsgs::MsgFastbootPresent) => {
+                            if !msgbuf.is_empty() && msgbuf[0] != 0 {
+                                send_image(&mut server_stdin, &fastboot_image, &quit).await?
+                            }
+                        }
+                        Ok(Sk8brdMsgs::MsgFastbootDownload) => (),
+                        Ok(Sk8brdMsgs::MsgFastbootBoot) => todo!("MsgFastbootBoot is unused"),
+                        Ok(Sk8brdMsgs::MsgStatusUpdate) => todo!("MsgStatusUpdate: implement me!"),
+                        Ok(Sk8brdMsgs::MsgVbusOn) => todo!("Unexpected MsgVbusOn"),
+                        Ok(Sk8brdMsgs::MsgVbusOff) => todo!("Unexpected MsgVbusOff"),
+                        Ok(Sk8brdMsgs::MsgFastbootReboot) => todo!("MsgFastbootReboot is unused"),
+                        Ok(Sk8brdMsgs::MsgSendBreak) => todo!("MsgSendBreak: implement me!"),
+                        Ok(Sk8brdMsgs::MsgListDevices) => print_string_msg(&msgbuf),
+                        Ok(Sk8brdMsgs::MsgBoardInfo) => print_string_msg(&msgbuf),
+                        Ok(Sk8brdMsgs::MsgFastbootContinue) => (),
+
+                        Ok(m) => todo!("{m:?} is unimplemented, skipping.."),
+                        Err(e) => todo!("Received unknown/invalid message: `{e}`"),
+                    };
+                }
+            }
         }
     }
 
@@ -195,7 +223,11 @@ async fn main() -> anyhow::Result<()> {
     crossterm::terminal::disable_raw_mode()?;
 
     // Power off the board on goodbye
-    send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOff).await?;
+    let _ = timeout(
+        std::time::Duration::from_secs(1),
+        send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOff),
+    )
+    .await;
 
     // ssh_disconnect(&mut sess).await?;
 
