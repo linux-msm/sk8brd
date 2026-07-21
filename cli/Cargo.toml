@@ -24,6 +24,6 @@ colored = "3.0.0"
 crossterm = "0.28.1"
 sk8brd-proto = { path = "../proto/", features = ["ssh"] }
 os_pipe = "1.2.1"
-russh = "0.50.4"
+russh = "0.62.3"
 serde = { version = "1.0.218", features = ["derive"] }
 tokio = { version = "1.43.0", features = ["full"] }

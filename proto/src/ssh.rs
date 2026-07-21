@@ -43,15 +43,15 @@ pub async fn ssh_connect(farm: &str, username: String) -> anyhow::Result<Channel
         .await
         .with_context(|| format!("Couldn't connect to {farm}"))?;
 
-    let keys = agent
+    let identities = agent
         .request_identities()
         .await
         .expect("Couldn't get identities from the ssh agent");
-    while let Some(key) = keys.first() {
+    while let Some(identity) = identities.first() {
         if sess
             .authenticate_publickey_with(
                 &username,
-                key.to_owned(),
+                identity.public_key().into_owned(),
                 Some(HashAlg::Sha256),
                 &mut agent,
             )
