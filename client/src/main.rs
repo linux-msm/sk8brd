@@ -75,6 +75,21 @@ async fn handle_keypress(
     }
 }
 
+struct TtyRawModeTracker {}
+
+impl TtyRawModeTracker {
+    fn new() -> anyhow::Result<Self> {
+        crossterm::terminal::enable_raw_mode()?;
+        Ok(Self {})
+    }
+}
+
+impl Drop for TtyRawModeTracker {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+    }
+}
+
 // For raw mode TTY
 #[allow(clippy::explicit_write)]
 #[tokio::main]
@@ -110,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
         send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOff).await?;
     }
 
-    crossterm::terminal::enable_raw_mode()?;
+    let _ = TtyRawModeTracker::new()?;
 
     let mut quit2 = Arc::clone(&quit);
     let mut server_stdin2 = Arc::clone(&server_stdin);
@@ -190,9 +205,6 @@ async fn main() -> anyhow::Result<()> {
 
     // No more keypresses will be useful
     stdin_handler.abort();
-
-    // Pick up the trash
-    crossterm::terminal::disable_raw_mode()?;
 
     // Power off the board on goodbye
     send_ack(&mut server_stdin, Sk8brdMsgs::MsgPowerOff).await?;
